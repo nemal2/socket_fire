@@ -8,7 +8,7 @@ public class DDoSAttack {
     private static final int SERVER_PORT = 5000;
 
     public static void main(String[] args) {
-        for (int i = 0; i < 100; i++) { // Simulate 100 clients
+        for (int i = 0; i < 50; i++) { // Simulate 100 clients
             new Thread(() -> {
                 try {
                     Socket socket = new Socket(SERVER_IP, SERVER_PORT);

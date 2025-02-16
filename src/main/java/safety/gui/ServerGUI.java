@@ -1,6 +1,7 @@
 package safety.gui;
 
 import javax.swing.*;
+import javax.swing.border.TitledBorder;
 import java.awt.*;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
@@ -11,76 +12,275 @@ public class ServerGUI extends JFrame {
     private int activeConnections = 0;
     private int blockedClients = 0;
 
+    private JPanel ddosPanel;
+    private JPanel mitmPanel;
+    private JLabel ddosStatusLabel;
+    private JLabel mitmStatusLabel;
+    private Timer ddosVisualTimer;
+    private Timer mitmVisualTimer;
+    private Color defaultBackground;
+    private JProgressBar securityBar;
+    private JLabel threatLabel;
+    private Timer blinkTimer;
+    private JPanel securityPanel;
+    private JLabel securityStatus;
+
     public ServerGUI() {
-        setTitle("Firewall Server Monitor - Hacker Mode");
+        setTitle("Firewall Server Monitor - Socket Fire");
         setSize(800, 600);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        // Main layout
+        setLayout(new BorderLayout(10, 10));
+        ((JPanel)getContentPane()).setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+        defaultBackground = new Color(32, 33, 36);
+        getContentPane().setBackground(defaultBackground);
 
-        // Set hacker mode theme
-        getContentPane().setBackground(Color.BLACK);
-        logArea = new JTextArea();
-        logArea.setEditable(false);
-        logArea.setBackground(Color.BLACK);
-        logArea.setForeground(Color.GREEN);
-        logArea.setFont(new Font("Monospaced", Font.PLAIN, 12));
+        // Security Status Panel
+        createSecurityPanel();
 
-        JScrollPane scrollPane = new JScrollPane(logArea);
-        scrollPane.setBackground(Color.BLACK);
-        add(scrollPane, BorderLayout.CENTER);
+        // Log Panel
+        createLogPanel();
 
-        // Status bar
-        statusLabel = new JLabel("Server Status: Running | Active Connections: 0 | Blocked Clients: 0");
-        statusLabel.setForeground(Color.GREEN);
-        statusLabel.setBackground(Color.BLACK);
-        statusLabel.setOpaque(true);
-        add(statusLabel, BorderLayout.SOUTH);
+        // Status Bar
+        createStatusBar();
 
         logBuffer = new ConcurrentLinkedQueue<>();
+        blinkTimer = new Timer(500, e -> blinkSecurityAlert(false));
 
-        // Start real-time log updates
         startLogUpdates();
+    }
+
+    private void createSecurityPanel() {
+        securityPanel = new JPanel();
+        securityPanel.setLayout(new GridLayout(3, 1, 5, 5));
+        securityPanel.setBackground(defaultBackground);
+        securityPanel.setBorder(BorderFactory.createTitledBorder(
+                BorderFactory.createLineBorder(Color.GREEN),
+                "Security Status",
+                TitledBorder.LEFT,
+                TitledBorder.TOP,
+                null,
+                Color.GREEN
+        ));
+
+        // Security Status
+        securityStatus = new JLabel("🟢 System Active - Monitoring Network", SwingConstants.CENTER);
+        securityStatus.setForeground(Color.GREEN);
+        securityStatus.setFont(new Font("Arial", Font.BOLD, 14));
+
+        // Threat Level
+        threatLabel = new JLabel("Current Threat Level: Normal", SwingConstants.CENTER);
+        threatLabel.setForeground(Color.GREEN);
+
+        // Security Bar
+        securityBar = new JProgressBar(0, 100);
+        securityBar.setValue(100);
+        securityBar.setStringPainted(true);
+        securityBar.setString("Security Status: Normal");
+        securityBar.setForeground(Color.GREEN);
+
+        securityPanel.add(securityStatus);
+        securityPanel.add(threatLabel);
+        securityPanel.add(securityBar);
+
+        add(securityPanel, BorderLayout.NORTH);
+    }
+
+    private void createLogPanel() {
+        logArea = new JTextArea();
+        logArea.setEditable(false);
+        logArea.setBackground(new Color(18, 18, 18));
+        logArea.setForeground(Color.GREEN);
+        logArea.setFont(new Font("Consolas", Font.PLAIN, 14));
+
+        JScrollPane scrollPane = new JScrollPane(logArea);
+        scrollPane.setBorder(BorderFactory.createLineBorder(Color.GREEN));
+        add(scrollPane, BorderLayout.CENTER);
+    }
+
+    private void createStatusBar() {
+        statusLabel = new JLabel("🔒 Firewall Active | Connections: 0 | Blocked: 0");
+        statusLabel.setForeground(Color.GREEN);
+        statusLabel.setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
+        add(statusLabel, BorderLayout.SOUTH);
+    }
+
+    public void updateSecurityStatus(String status, Color color) {
+        SwingUtilities.invokeLater(() -> {
+            securityStatus.setText(status);
+            securityStatus.setForeground(color);
+            securityBar.setString(status);
+            securityBar.setForeground(color);
+        });
+    }
+
+    private Timer createVisualTimer(JPanel panel) {
+        return new Timer(500, e -> {
+            if (panel.getBackground().equals(Color.RED)) {
+                panel.setBackground(Color.YELLOW);
+            } else {
+                panel.setBackground(Color.RED);
+            }
+        });
+    }
+
+    public void log(String message) {
+        String timestamp = String.format("[%tT] ", System.currentTimeMillis());
+        logBuffer.add(timestamp + message);
+    }
+
+    public void logSecurityEvent(String message, boolean isWarning) {
+        String prefix = isWarning ? "⚠️ WARNING: " : "ℹ️ INFO: ";
+        log(prefix + message);
+        if (isWarning) {
+            blinkSecurityAlert(true);
+        }
+    }
+
+    private void blinkSecurityAlert(boolean isActive) {
+        SwingUtilities.invokeLater(() -> {
+            if (isActive) {
+                securityPanel.setBackground(Color.RED);
+                threatLabel.setText("⚠️ THREAT DETECTED - Active Response");
+                threatLabel.setForeground(Color.RED);
+                securityBar.setValue(25);
+                securityBar.setString("THREAT DETECTED");
+                securityBar.setForeground(Color.RED);
+            } else {
+                securityPanel.setBackground(defaultBackground);
+                threatLabel.setText("Current Threat Level: Normal");
+                threatLabel.setForeground(Color.GREEN);
+                securityBar.setValue(100);
+                securityBar.setString("Security Status: Normal");
+                securityBar.setForeground(Color.GREEN);
+            }
+        });
+    }
+
+    public void updateDDoSStatus(boolean underAttack, String attackerIP) {
+        updateAttackStatus(ddosPanel, ddosStatusLabel, ddosVisualTimer,
+                "DDoS ATTACK IN PROGRESS - Attacker: " + attackerIP,
+                "No DDoS Attacks Detected", underAttack);
+    }
+
+    public void updateHTTPFloodStatus(boolean detected, String attackerIP) {
+        SwingUtilities.invokeLater(() -> {
+            if (detected) {
+                // Update security panel
+                securityStatus.setText("🚨 HTTP FLOOD ATTACK DETECTED - Blocking " + attackerIP);
+                securityStatus.setForeground(Color.RED);
+
+                // Update threat level
+                threatLabel.setText("⚠️ CRITICAL - HTTP Flood Attack in Progress");
+                threatLabel.setForeground(Color.RED);
+
+                // Update security bar
+                securityBar.setValue(0);
+                securityBar.setString("HTTP FLOOD ATTACK DETECTED");
+                securityBar.setForeground(Color.RED);
+
+                // Start blinking effect
+                blinkSecurityAlert(true);
+
+                // Log the event
+                logSecurityEvent("HTTP Flood Attack detected from " + attackerIP, true);
+
+                // Schedule reset after 10 seconds
+                Timer resetTimer = new Timer(10000, e -> blinkSecurityAlert(false));
+                resetTimer.setRepeats(false);
+                resetTimer.start();
+            }
+        });
     }
 
     private void startLogUpdates() {
         Thread logThread = new Thread(() -> {
             while (true) {
-                if (!logBuffer.isEmpty()) {
+                while (!logBuffer.isEmpty()) {
                     String log = logBuffer.poll();
                     SwingUtilities.invokeLater(() -> {
                         logArea.append(log + "\n");
-                        updateStatus(log);
+                        logArea.setCaretPosition(logArea.getDocument().getLength());
                     });
                 }
                 try {
-                    Thread.sleep(500); // Update every 500ms
+                    Thread.sleep(100);
                 } catch (InterruptedException e) {
-                    e.printStackTrace();
+                    Thread.currentThread().interrupt();
+                    break;
                 }
             }
         });
+        logThread.setDaemon(true);
         logThread.start();
     }
 
-    private void updateStatus(String log) {
-        if (log.contains("Accepted connection")) {
-            activeConnections++;
-        } else if (log.contains("Blocked blacklisted client") || log.contains("Rate limit exceeded")) {
-            blockedClients++;
-            activeConnections--;
-        } else if (log.contains("Error handling client")) {
-            activeConnections--;
-        }
-        statusLabel.setText("Server Status: Running | Active Connections: " + activeConnections + " | Blocked Clients: " + blockedClients);
-    }
-
-    public void log(String message) {
-        logBuffer.add(message);
-    }
-
-    public static void main(String[] args) {
+    public void updateMITMStatus(boolean detected, String attackerIP) {
         SwingUtilities.invokeLater(() -> {
-            ServerGUI gui = new ServerGUI();
-            gui.setVisible(true);
+            if (detected) {
+                // Update security panel
+                securityStatus.setText("🚨 MITM ATTACK DETECTED - Blocking " + attackerIP);
+                securityStatus.setForeground(Color.RED);
+
+                // Update threat level
+                threatLabel.setText("⚠️ CRITICAL - MITM Attack in Progress");
+                threatLabel.setForeground(Color.RED);
+
+                // Update security bar
+                securityBar.setValue(0);
+                securityBar.setString("MITM ATTACK DETECTED");
+                securityBar.setForeground(Color.RED);
+
+                // Start blinking effect
+                blinkSecurityAlert(true);
+
+                // Log the event
+                logSecurityEvent("MITM Attack detected from " + attackerIP, true);
+
+                // Schedule reset after 10 seconds
+                Timer resetTimer = new Timer(10000, e -> blinkSecurityAlert(false));
+                resetTimer.setRepeats(false);
+                resetTimer.start();
+            }
+        });
+    }
+
+    public synchronized void incrementBlockedClients() {
+        blockedClients++;
+        updateStatusLabel();
+    }
+
+    public synchronized void updateConnectionStatus(int connections) {
+        this.activeConnections = connections;
+        updateStatusLabel();
+    }
+
+    private void updateStatusLabel() {
+        SwingUtilities.invokeLater(() -> {
+            statusLabel.setText(String.format("🔒 Firewall Active | Connections: %d | Blocked: %d",
+                    activeConnections, blockedClients));
+        });
+    }
+
+    private void updateAttackStatus(JPanel panel, JLabel label, Timer timer,
+                                    String attackMsg, String clearMsg, boolean underAttack) {
+        SwingUtilities.invokeLater(() -> {
+            if (underAttack) {
+                label.setText("⚠️ " + attackMsg);
+                timer.start();
+
+                Timer clearTimer = new Timer(10000, e -> {
+                    label.setText(clearMsg);
+                    panel.setBackground(defaultBackground);
+                    timer.stop();
+                });
+                clearTimer.setRepeats(false);
+                clearTimer.start();
+            } else {
+                label.setText(clearMsg);
+                panel.setBackground(defaultBackground);
+                timer.stop();
+            }
         });
     }
 }

