@@ -15,11 +15,13 @@ public class HTTPFloodProtector {
     private static final Map<String, Boolean> attackStatus = new ConcurrentHashMap<>();
 
     public boolean isHTTPFlood(String ipAddress, String request) {
-        // Simple check for HTTP requests - in a real system we'd parse more carefully
-        if (request == null || (!request.startsWith("GET") && !request.startsWith("POST") &&
-                !request.contains("HTTP"))) {
-            return false; // Not an HTTP request
+        // Modified to detect both plaintext HTTP and encrypted HTTP (just checking the connection frequency)
+        if (request == null) {
+            return false;
         }
+
+        // For encrypted connections, we may not be able to see the HTTP format,
+        // so we'll focus on connection frequency from the same IP
 
         cleanOldRequests(ipAddress);
 
@@ -33,6 +35,9 @@ public class HTTPFloodProtector {
             String message = "HTTP Flood Attack detected from " + ipAddress +
                     " (Requests: " + requests.size() + " in " + TIME_WINDOW_SECONDS + " seconds)";
             FirewallServer.gui.logSecurityEvent(message, true);
+
+            // Update GUI to show HTTP flood attack
+            FirewallServer.gui.updateHTTPFloodStatus(true, ipAddress);
         }
 
         return isFlood;
@@ -47,12 +52,21 @@ public class HTTPFloodProtector {
             }
 
             if (requests.isEmpty()) {
-                attackStatus.remove(ipAddress);
+                if (attackStatus.remove(ipAddress) != null) {
+                    // Reset attack status in GUI if the attack is over
+                    FirewallServer.gui.updateHTTPFloodStatus(false, ipAddress);
+                }
             }
         }
     }
 
     public boolean isAttacking(String ipAddress) {
         return attackStatus.getOrDefault(ipAddress, false);
+    }
+
+    // Clear all attack records - useful for testing
+    public void clearAllRecords() {
+        requestHistory.clear();
+        attackStatus.clear();
     }
 }

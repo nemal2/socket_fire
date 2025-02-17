@@ -26,6 +26,16 @@ public class ClientHandler extends Thread {
             out = new PrintWriter(clientSocket.getOutputStream(), true);
             in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
 
+            // Check for HTTP flooding BEFORE processing anything else
+            // This helps catch rapid SSL connections that might be part of a flood
+            if (httpFloodProtector.isHTTPFlood(clientAddress, "")) {
+                FirewallServer.gui.log("⚠️ HTTP FLOOD ATTACK DETECTED from: " + clientAddress);
+                FirewallServer.addToBlacklist(clientAddress);
+                out.println("BLOCKED: HTTP Flood Attack Detected");
+                closeConnection("Attack detected");
+                return;
+            }
+
             out.println("CONNECTION_ACCEPTED");
             FirewallServer.gui.log("Established connection with client: " + clientAddress);
 
@@ -42,10 +52,9 @@ public class ClientHandler extends Thread {
 
                 FirewallServer.gui.log("Processing message from " + clientAddress + ": " + inputLine);
 
-                // Check for HTTP Flood
+                // Additional content-based HTTP Flood check
                 if (httpFloodProtector.isHTTPFlood(clientAddress, inputLine)) {
                     FirewallServer.gui.log("⚠️ HTTP FLOOD ATTACK DETECTED from: " + clientAddress);
-                    FirewallServer.gui.updateHTTPFloodStatus(true, clientAddress);
                     FirewallServer.addToBlacklist(clientAddress);
                     out.println("BLOCKED: HTTP Flood Attack Detected");
                     attackDetected = true;
@@ -75,6 +84,12 @@ public class ClientHandler extends Thread {
             }
 
         } catch (IOException e) {
+            // Still check for HTTP flood on connection errors
+            if (httpFloodProtector.isHTTPFlood(clientAddress, "")) {
+                FirewallServer.gui.log("⚠️ HTTP FLOOD ATTACK DETECTED during exception handling from: " + clientAddress);
+                FirewallServer.addToBlacklist(clientAddress);
+            }
+
             if (!e.getMessage().contains("Socket closed") && !e.getMessage().contains("Connection reset")) {
                 FirewallServer.gui.log("Error handling client " + clientAddress + ": " + e.getMessage());
             }

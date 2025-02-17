@@ -1,6 +1,7 @@
 package safety.server;
 
 import safety.firewall.DDoSProtector;
+import safety.firewall.HTTPFloodProtector;
 import safety.firewall.MITMProtector;
 import safety.gui.ServerGUI;
 
@@ -18,6 +19,9 @@ public class FirewallServer {
     private static int activeConnections = 0;
     private static final DDoSProtector ddosProtector = new DDoSProtector();
     private static final MITMProtector mitmProtector = new MITMProtector();
+    private static final HTTPFloodProtector httpFloodProtector = new HTTPFloodProtector();
+
+
 
     public static void main(String[] args) {
         // Start the GUI
@@ -44,11 +48,25 @@ public class FirewallServer {
                     continue;
                 }
 
-                // Check for DDoS attack
+                // Unified attack detection approach
+                boolean isDDoS = ddosProtector.isDDoSAttack(clientAddress);
+                boolean isHTTPFlood = httpFloodProtector.isHTTPFlood(clientAddress, null);
+
+                if (isDDoS || isHTTPFlood) {
+                    String attackType = isDDoS ? "DDoS" : "HTTP Flood";
+                    gui.log("Rejected connection from " + attackType + " attacker: " + clientAddress);
+                    clientSocket.close();
+                    updateConnections(false, true);
+                    addToBlacklist(clientAddress);
+                    continue;
+                }
+
+                // Check for DDoS attack - this must be checked BEFORE HTTP flood
                 if (ddosProtector.isDDoSAttack(clientAddress)) {
                     gui.log("Rejected connection from DDoS attacker: " + clientAddress);
                     clientSocket.close();
                     updateConnections(false, true);
+                    addToBlacklist(clientAddress);
                     continue;
                 }
 
@@ -82,5 +100,13 @@ public class FirewallServer {
 
     public static void decrementConnections() {
         updateConnections(false, false);
+    }
+
+    public static DDoSProtector getDdosProtector() {
+        return ddosProtector;
+    }
+
+    public static HTTPFloodProtector getHttpFloodProtector() {
+        return httpFloodProtector;
     }
 }

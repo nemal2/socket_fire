@@ -1,46 +1,62 @@
 package safety.firewall;
 
-import java.time.Instant;
 import java.time.Duration;
+import java.time.Instant;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentSkipListSet;
 
 public class PortScanningProtector {
-    private static final int PORT_COUNT_THRESHOLD = 10; // Number of different ports tried
-    private static final int TIME_WINDOW_SECONDS = 30;
+    private static final int PORT_SCAN_THRESHOLD = 5;
+    private static final int TIME_WINDOW_SECONDS = 5;
+    private final Map<String, PortScanData> scanHistory = new ConcurrentHashMap<>();
 
-    private final Map<String, Set<Integer>> portAccessHistory = new ConcurrentHashMap<>();
-    private final Map<String, Instant> lastResetTime = new ConcurrentHashMap<>();
-    private final Map<String, Boolean> attackStatus = new ConcurrentHashMap<>();
+    private class PortScanData {
+        Instant firstAttempt;
+        Set<Integer> ports;  // Track unique ports
+        boolean attackReported;
+
+        PortScanData() {
+            this.firstAttempt = Instant.now();
+            this.ports = new HashSet<>();
+            this.attackReported = false;
+        }
+    }
 
     public boolean isPortScanningAttack(String ipAddress, int port) {
-        // Check if it's time to reset the set of ports
-        Instant now = Instant.now();
-        Instant lastReset = lastResetTime.getOrDefault(ipAddress, Instant.MIN);
-        if (Duration.between(lastReset, now).getSeconds() > TIME_WINDOW_SECONDS) {
-            portAccessHistory.put(ipAddress, new ConcurrentSkipListSet<>());
-            lastResetTime.put(ipAddress, now);
+        cleanOldRecords();
+
+        PortScanData data = scanHistory.computeIfAbsent(ipAddress, k -> new PortScanData());
+
+        // Reset if time window expired
+        if (Duration.between(data.firstAttempt, Instant.now()).getSeconds() > TIME_WINDOW_SECONDS) {
+            data.firstAttempt = Instant.now();
+            data.ports.clear();
+            data.attackReported = false;
+            return false;
         }
 
-        // Add port to the set of accessed ports
-        Set<Integer> ports = portAccessHistory.computeIfAbsent(ipAddress,
-                k -> new ConcurrentSkipListSet<>());
-        ports.add(port);
+        // Add new port to set of scanned ports
+        data.ports.add(port);
 
-        // Check if threshold is reached
-        boolean isAttack = ports.size() >= PORT_COUNT_THRESHOLD;
-
-        // Update attack status if changed
-        if (isAttack != attackStatus.getOrDefault(ipAddress, false)) {
-            attackStatus.put(ipAddress, isAttack);
+        // Only consider it a port scan if multiple unique ports are tried
+        if (data.ports.size() >= PORT_SCAN_THRESHOLD && !data.attackReported) {
+            data.attackReported = true;
+            return true;
         }
 
-        return isAttack;
+        return data.attackReported;
+    }
+
+    private void cleanOldRecords() {
+        Instant cutoff = Instant.now().minus(Duration.ofSeconds(TIME_WINDOW_SECONDS));
+        scanHistory.entrySet().removeIf(entry ->
+                entry.getValue().firstAttempt.isBefore(cutoff));
     }
 
     public boolean isAttacking(String ipAddress) {
-        return attackStatus.getOrDefault(ipAddress, false);
+        PortScanData data = scanHistory.get(ipAddress);
+        return data != null && data.attackReported;
     }
 }

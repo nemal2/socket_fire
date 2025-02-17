@@ -1,5 +1,7 @@
 package safety.gui;
 
+import safety.server.FirewallServer;
+
 import javax.swing.*;
 import javax.swing.border.TitledBorder;
 import java.awt.*;
@@ -158,9 +160,50 @@ public class ServerGUI extends JFrame {
     }
 
     public void updateDDoSStatus(boolean underAttack, String attackerIP) {
-        updateAttackStatus(ddosPanel, ddosStatusLabel, ddosVisualTimer,
-                "DDoS ATTACK IN PROGRESS - Attacker: " + attackerIP,
-                "No DDoS Attacks Detected", underAttack);
+        SwingUtilities.invokeLater(() -> {
+            if (underAttack) {
+                // Update security panel
+                securityStatus.setText("🚨 DDoS ATTACK IN PROGRESS - Blocking " + attackerIP);
+                securityStatus.setForeground(Color.RED);
+
+                // Update threat level
+                threatLabel.setText("⚠️ CRITICAL - DDoS Attack in Progress");
+                threatLabel.setForeground(Color.RED);
+
+                // Update security bar
+                securityBar.setValue(0);
+                securityBar.setString("DDoS ATTACK DETECTED");
+                securityBar.setForeground(Color.RED);
+
+                // Start blinking effect
+                blinkSecurityAlert(true);
+
+                // Log the event
+                logSecurityEvent("DDoS Attack detected from " + attackerIP, true);
+
+                // Schedule reset after 10 seconds if we don't get another attack notification
+                Timer resetTimer = new Timer(10000, e -> {
+                    if (!FirewallServer.getDdosProtector().isAttacking(attackerIP)) {
+                        blinkSecurityAlert(false);
+                    }
+                });
+                resetTimer.setRepeats(false);
+                resetTimer.start();
+            } else {
+                // Only reset visuals if there are no other attacks happening
+                if (!FirewallServer.getHttpFloodProtector().isAttacking(attackerIP)) {
+                    securityStatus.setText("🟢 System Active - Monitoring Network");
+                    securityStatus.setForeground(Color.GREEN);
+                    threatLabel.setText("Current Threat Level: Normal");
+                    threatLabel.setForeground(Color.GREEN);
+                    securityBar.setValue(100);
+                    securityBar.setString("Security Status: Normal");
+                    securityBar.setForeground(Color.GREEN);
+                    blinkSecurityAlert(false);
+                }
+                logSecurityEvent("DDoS Attack from " + attackerIP + " has stopped", false);
+            }
+        });
     }
 
     public void updateHTTPFloodStatus(boolean detected, String attackerIP) {
@@ -189,6 +232,17 @@ public class ServerGUI extends JFrame {
                 Timer resetTimer = new Timer(10000, e -> blinkSecurityAlert(false));
                 resetTimer.setRepeats(false);
                 resetTimer.start();
+            } else {
+                // Reset the visual indicators if the attack is over
+                securityStatus.setText("🟢 System Active - Monitoring Network");
+                securityStatus.setForeground(Color.GREEN);
+                threatLabel.setText("Current Threat Level: Normal");
+                threatLabel.setForeground(Color.GREEN);
+                securityBar.setValue(100);
+                securityBar.setString("Security Status: Normal");
+                securityBar.setForeground(Color.GREEN);
+                blinkSecurityAlert(false);
+                logSecurityEvent("HTTP Flood Attack from " + attackerIP + " has stopped", false);
             }
         });
     }
