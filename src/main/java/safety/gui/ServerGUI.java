@@ -247,6 +247,56 @@ public class ServerGUI extends JFrame {
         });
     }
 
+
+    public void updatePoDStatus(boolean detected, String attackerIP) {
+        SwingUtilities.invokeLater(() -> {
+            if (detected) {
+                // Update security panel
+                securityStatus.setText("🚨 PING OF DEATH ATTACK DETECTED - Blocking " + attackerIP);
+                securityStatus.setForeground(Color.RED);
+
+                // Update threat level
+                threatLabel.setText("⚠️ CRITICAL - Ping of Death Attack in Progress");
+                threatLabel.setForeground(Color.RED);
+
+                // Update security bar
+                securityBar.setValue(0);
+                securityBar.setString("PING OF DEATH ATTACK DETECTED");
+                securityBar.setForeground(Color.RED);
+
+                // Start blinking effect
+                blinkSecurityAlert(true);
+
+                // Log the event
+                logSecurityEvent("Ping of Death Attack detected from " + attackerIP, true);
+
+                // Schedule reset after 10 seconds
+                Timer resetTimer = new Timer(10000, e -> {
+                    if (!FirewallServer.getPodProtector().isAttacking(attackerIP)) {
+                        blinkSecurityAlert(false);
+                    }
+                });
+                resetTimer.setRepeats(false);
+                resetTimer.start();
+            } else {
+                // Reset visual indicators if no other attacks are happening
+                if (!FirewallServer.getDdosProtector().isAttacking(attackerIP) &&
+                        !FirewallServer.getHttpFloodProtector().isAttacking(attackerIP)) {
+                    securityStatus.setText("🟢 System Active - Monitoring Network");
+                    securityStatus.setForeground(Color.GREEN);
+                    threatLabel.setText("Current Threat Level: Normal");
+                    threatLabel.setForeground(Color.GREEN);
+                    securityBar.setValue(100);
+                    securityBar.setString("Security Status: Normal");
+                    securityBar.setForeground(Color.GREEN);
+                    blinkSecurityAlert(false);
+                }
+                logSecurityEvent("Ping of Death Attack from " + attackerIP + " has stopped", false);
+            }
+        });
+    }
+
+
     private void startLogUpdates() {
         Thread logThread = new Thread(() -> {
             while (true) {

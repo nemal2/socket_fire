@@ -3,6 +3,7 @@ package safety.server;
 import safety.firewall.DDoSProtector;
 import safety.firewall.HTTPFloodProtector;
 import safety.firewall.MITMProtector;
+import safety.firewall.PingOfDeathProtector;
 import safety.gui.ServerGUI;
 
 import javax.net.ssl.SSLServerSocket;
@@ -20,13 +21,22 @@ public class FirewallServer {
     private static final DDoSProtector ddosProtector = new DDoSProtector();
     private static final MITMProtector mitmProtector = new MITMProtector();
     private static final HTTPFloodProtector httpFloodProtector = new HTTPFloodProtector();
-
+    private static final PingOfDeathProtector podProtector = new PingOfDeathProtector();
+    private static UDPHandler udpHandler;
 
 
     public static void main(String[] args) {
         // Start the GUI
         gui = new ServerGUI();
         gui.setVisible(true);
+
+        try {
+            udpHandler = new UDPHandler(PORT);
+            udpHandler.start();
+            gui.log("UDP Handler started on port " + PORT);
+        } catch (IOException e) {
+            gui.log("Failed to start UDP Handler: " + e.getMessage());
+        }
 
         try {
             // Create SSL Server Socket
@@ -108,5 +118,9 @@ public class FirewallServer {
 
     public static HTTPFloodProtector getHttpFloodProtector() {
         return httpFloodProtector;
+    }
+
+    public static PingOfDeathProtector getPodProtector() {
+        return podProtector;
     }
 }
