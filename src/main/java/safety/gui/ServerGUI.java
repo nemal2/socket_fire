@@ -25,6 +25,7 @@ public class ServerGUI extends JFrame {
     private JLabel threatLabel;
     private Timer blinkTimer;
     private JPanel securityPanel;
+    private JPanel attackPanel;
     private JLabel securityStatus;
 
     public ServerGUI() {
@@ -87,6 +88,43 @@ public class ServerGUI extends JFrame {
 
         add(securityPanel, BorderLayout.NORTH);
     }
+
+    private void createAttackPanel() {
+        attackPanel = new JPanel();
+        attackPanel.setLayout(new GridLayout(5, 1, 5, 5));
+        attackPanel.setBackground(defaultBackground);
+        attackPanel.setBorder(BorderFactory.createTitledBorder(
+                BorderFactory.createLineBorder(Color.GREEN),
+                "Attack Monitoring",
+                TitledBorder.LEFT,
+                TitledBorder.TOP,
+                null,
+                Color.GREEN
+        ));
+
+        // Add attack type labels
+        JLabel ddosLabel = createAttackLabel("DDoS Protection: Active");
+        JLabel httpFloodLabel = createAttackLabel("HTTP Flood Protection: Active");
+        JLabel slowlorisLabel = createAttackLabel("Slowloris Protection: Active");
+        JLabel mitmLabel = createAttackLabel("MITM Protection: Active");
+        JLabel podLabel = createAttackLabel("Ping of Death Protection: Active");
+
+        attackPanel.add(ddosLabel);
+        attackPanel.add(httpFloodLabel);
+        attackPanel.add(slowlorisLabel);
+        attackPanel.add(mitmLabel);
+        attackPanel.add(podLabel);
+
+        add(attackPanel, BorderLayout.EAST);
+    }
+
+    private JLabel createAttackLabel(String text) {
+        JLabel label = new JLabel(text);
+        label.setForeground(Color.GREEN);
+        label.setHorizontalAlignment(SwingConstants.LEFT);
+        return label;
+    }
+
 
     private void createLogPanel() {
         logArea = new JTextArea();
@@ -348,6 +386,36 @@ public class ServerGUI extends JFrame {
             }
         });
     }
+
+    private void updateSlowlorisPanel() {
+        JPanel slowlorisPanel = new JPanel();
+        slowlorisPanel.setLayout(new BorderLayout());
+        slowlorisPanel.setBackground(defaultBackground);
+        slowlorisPanel.setBorder(BorderFactory.createTitledBorder(
+                BorderFactory.createLineBorder(Color.GREEN),
+                "Slowloris Protection",
+                TitledBorder.LEFT,
+                TitledBorder.TOP,
+                null,
+                Color.GREEN
+        ));
+    }
+
+    public void updateSlowlorisStatus(boolean underAttack, int connectionCount) {
+        SwingUtilities.invokeLater(() -> {
+            if (underAttack) {
+                securityStatus.setText("🚨 SLOWLORIS ATTACK IN PROGRESS - " + connectionCount + " slow connections");
+                securityStatus.setForeground(Color.RED);
+                threatLabel.setText("⚠️ CRITICAL - Slowloris Attack Detected");
+                threatLabel.setForeground(Color.RED);
+                securityBar.setValue(0);
+                securityBar.setString("SLOWLORIS ATTACK DETECTED");
+                securityBar.setForeground(Color.RED);
+                blinkSecurityAlert(true);
+            }
+        });
+    }
+
 
     public synchronized void incrementBlockedClients() {
         blockedClients++;

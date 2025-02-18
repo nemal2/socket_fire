@@ -1,117 +1,131 @@
+// ClientHandler.java
 package safety.server;
 
 import java.io.*;
 import java.net.Socket;
-import safety.firewall.MITMProtector;
-import safety.firewall.HTTPFloodProtector;
+import safety.firewall.*;
 
 public class ClientHandler extends Thread {
     private final Socket clientSocket;
     private final String clientAddress;
-    private final MITMProtector mitmProtector;
-    private static final HTTPFloodProtector httpFloodProtector = new HTTPFloodProtector();
+    private final String connectionId;
     private PrintWriter out;
     private BufferedReader in;
+    private boolean isRunning = true;
 
-    public ClientHandler(Socket socket) {
+    public ClientHandler(Socket socket, String connectionId) {
         this.clientSocket = socket;
         this.clientAddress = socket.getInetAddress().getHostAddress();
-        this.mitmProtector = new MITMProtector();
+        this.connectionId = connectionId;
     }
 
     @Override
     public void run() {
         try {
-            clientSocket.setSoTimeout(30000); // Set a timeout for client inactivity
-            out = new PrintWriter(clientSocket.getOutputStream(), true);
-            in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
-
-            // Check for HTTP flooding BEFORE processing anything else
-            // This helps catch rapid SSL connections that might be part of a flood
-            if (httpFloodProtector.isHTTPFlood(clientAddress, "")) {
-                FirewallServer.gui.log("⚠️ HTTP FLOOD ATTACK DETECTED from: " + clientAddress);
-                FirewallServer.addToBlacklist(clientAddress);
-                out.println("BLOCKED: HTTP Flood Attack Detected");
-                closeConnection("Attack detected");
-                return;
-            }
-
-            out.println("CONNECTION_ACCEPTED");
-            FirewallServer.gui.log("Established connection with client: " + clientAddress);
-
-            String inputLine;
-            int emptyLineCount = 0;
-            boolean attackDetected = false;
-
-            while ((inputLine = in.readLine()) != null) {
-                if (inputLine.trim().isEmpty()) {
-                    emptyLineCount++;
-                    if (emptyLineCount > 5) break; // Close connection if too many empty lines
-                    continue;
-                }
-
-                FirewallServer.gui.log("Processing message from " + clientAddress + ": " + inputLine);
-
-                // Additional content-based HTTP Flood check
-                if (httpFloodProtector.isHTTPFlood(clientAddress, inputLine)) {
-                    FirewallServer.gui.log("⚠️ HTTP FLOOD ATTACK DETECTED from: " + clientAddress);
-                    FirewallServer.addToBlacklist(clientAddress);
-                    out.println("BLOCKED: HTTP Flood Attack Detected");
-                    attackDetected = true;
-                    break;
-                }
-
-                // Check for MITM attack
-                if (mitmProtector.detectMITMAttempt(inputLine, clientAddress)) {
-                    FirewallServer.gui.log("⚠️ MITM ATTACK DETECTED from: " + clientAddress);
-                    FirewallServer.gui.updateMITMStatus(true, clientAddress);
-                    FirewallServer.addToBlacklist(clientAddress);
-                    out.println("BLOCKED: MITM Attack Detected");
-                    attackDetected = true;
-                    break;
-                }
-
-                // Process normal request
-                String response = String.format("[%tT] Server received: %s", System.currentTimeMillis(), inputLine);
-                out.println(response);
-                out.flush();
-            }
-
-            if (attackDetected) {
-                closeConnection("Attack detected");
-            } else {
-                closeConnection("Connection closed normally");
-            }
-
+            setupConnection();
+            handleClientCommunication();
         } catch (IOException e) {
-            // Still check for HTTP flood on connection errors
-            if (httpFloodProtector.isHTTPFlood(clientAddress, "")) {
-                FirewallServer.gui.log("⚠️ HTTP FLOOD ATTACK DETECTED during exception handling from: " + clientAddress);
-                FirewallServer.addToBlacklist(clientAddress);
-            }
-
-            if (!e.getMessage().contains("Socket closed") && !e.getMessage().contains("Connection reset")) {
-                FirewallServer.gui.log("Error handling client " + clientAddress + ": " + e.getMessage());
-            }
-            closeConnection("Connection terminated: " + e.getMessage());
+            handleError(e);
+        } finally {
+            cleanup();
         }
     }
 
-    private void closeConnection(String reason) {
+    private void setupConnection() throws IOException {
+        clientSocket.setSoTimeout(30000); // 30 second timeout
+        out = new PrintWriter(clientSocket.getOutputStream(), true);
+        in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
+        out.println("CONNECTION_ACCEPTED");
+        FirewallServer.gui.log("🤝 Established connection with client: " + clientAddress);
+    }
+
+    private void handleClientCommunication() throws IOException {
+        String inputLine;
+        int emptyLineCount = 0;
+
+        while (isRunning && (inputLine = in.readLine()) != null) {
+            if (inputLine.trim().isEmpty()) {
+                if (++emptyLineCount > 5) break;
+                continue;
+            }
+            emptyLineCount = 0;
+
+            // Register header received for Slowloris detection
+            FirewallServer.getSlowlorisProtector().registerHeaderReceived(clientAddress, connectionId);
+
+            // Check for various attacks
+            if (checkForAttacks(inputLine)) {
+                break;
+            }
+
+            // Process normal request
+            FirewallServer.gui.log("📨 Processing message from " + clientAddress + ": " + inputLine);
+            String response = String.format("[%tT] Server received: %s", System.currentTimeMillis(), inputLine);
+            out.println(response);
+            out.flush();
+        }
+    }
+
+    private boolean checkForAttacks(String inputLine) {
+        // Check for HTTP Flood
+        if (FirewallServer.getHttpFloodProtector().isHTTPFlood(clientAddress, inputLine)) {
+            handleAttack("HTTP Flood");
+            return true;
+        }
+
+        // Check for MITM
+        if (FirewallServer.getMitmProtector().detectMITMAttempt(inputLine, clientAddress)) {
+            handleAttack("MITM");
+            return true;
+        }
+
+        // Check for Slowloris
+        if (FirewallServer.getSlowlorisProtector().isSlowlorisAttack(clientAddress, connectionId)) {
+            handleAttack("Slowloris");
+            return true;
+        }
+
+        return false;
+    }
+
+    private void handleAttack(String attackType) {
+        FirewallServer.gui.log("⚠️ " + attackType + " attack detected from: " + clientAddress);
+        FirewallServer.addToBlacklist(clientAddress);
+        out.println("BLOCKED: " + attackType + " Attack Detected");
+        closeConnection();
+    }
+
+    private void handleError(IOException e) {
+        if (!e.getMessage().contains("Socket closed") &&
+                !e.getMessage().contains("Connection reset")) {
+            FirewallServer.gui.log("❌ Error handling client " + clientAddress + ": " + e.getMessage());
+        }
+    }
+
+    private void cleanup() {
+        closeConnection();
+        FirewallServer.removeHandler(connectionId);
+        FirewallServer.getSlowlorisProtector().removeConnection(clientAddress, connectionId);
+        FirewallServer.decrementConnections();
+    }
+
+    public void closeConnection() {
+        isRunning = false;
         try {
             if (out != null) {
-                out.println("CONNECTION_CLOSED: " + reason);
-                out.flush();
+                out.println("CONNECTION_CLOSED");
                 out.close();
             }
             if (in != null) in.close();
             if (!clientSocket.isClosed()) {
                 clientSocket.close();
             }
-            FirewallServer.decrementConnections();
-            FirewallServer.gui.log("Closed connection from " + clientAddress + ": " + reason);
         } catch (IOException e) {
-            FirewallServer.gui.log("Error while closing connection: " + e.getMessage());
+            FirewallServer.gui.log("Error closing connection: " + e.getMessage());
         }
+    }
+
+    public String getClientAddress() {
+        return clientAddress;
     }
 }
